@@ -1,0 +1,440 @@
+package kr.spring.controller;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.List;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpSession;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import com.oreilly.servlet.MultipartRequest;
+import com.oreilly.servlet.multipart.DefaultFileRenamePolicy;
+
+import kr.spring.entity.Auth;
+import kr.spring.entity.Member;
+import kr.spring.entity.MemberUser;
+import kr.spring.mapper.MemberMapper;
+import kr.spring.security.MemberUserDetailsService;
+
+@Controller
+public class MemberController {
+
+	@Autowired
+	private MemberMapper mapper;
+
+	// bean으로 메모리에 올려놨으니까 (SecurityConfig)
+	// 가져다써야돼(주입받아 사용하겠다) -> Autowired
+	@Autowired
+	private PasswordEncoder pwEncoder;
+	
+	
+	//+ 추가
+	@Autowired
+	private MemberUserDetailsService MemberUserDetailsService;
+	// 회원정보 수정 후 Spring Security Context에 접근하기 위한 객체
+
+	@GetMapping("/access-denied")
+	public String showAccessDenied() {
+		// 로그인을 하지 않고 특정 페이지에 접근했을 때 요청되는 URL
+		return "access-denied";
+	}
+
+	@RequestMapping("/joinForm.do")
+	public String joinForm() {
+		// 컨트롤러에서 실행하면 위치가 views(처음 시작점)
+		// -> member 폴더로 들어와야 함
+		return "member/joinForm";
+	}
+
+	@RequestMapping("/idCheck.do")
+	public @ResponseBody int idCheck(@RequestParam("memId") String id) {
+		// restController가 아니면 @ResponseBody 꼭 써줘야 비동기통신 가능
+		Member m = mapper.idCheck(id);
+		// m == null : 아이디 사용가능
+		// m != null : 아이디 사용불가능
+
+		if (m != null || id.equals("")) {
+			return 0;
+		} else {
+			return 1;
+		}
+
+	}
+
+	@RequestMapping("/join.do")
+	public String join(Member m, RedirectAttributes rttr, HttpSession session) {
+		System.out.println("회원가입 요청");
+
+		// 유효성 검사
+		// 빈값은 없는지 아이디를 잘 입력했는지 등등
+		// 백엔드나 프로트엔드 둘 중 하나는 꼭 해줘야함 , 둘 다 해주는 게 베스트
+		if (m.getMemId() == null || m.getMemId().equals("") || m.getMemPw() == null || m.getMemPw().equals("")
+				|| m.getMemName() == null || m.getMemName().equals("") || m.getMemAge() == 0 || m.getMemEmail() == null
+				|| m.getMemEmail().equals("") || m.getAuthList().size() == 0) {
+			// m.getAuthList().size() == 0 : 권한을 아무것도 체크하지 않은 경우
+			// jsp에서 name값이 틀렸음(null값이다) : memId가 아님 or 빈값이 들어옴(아이디를 작성하지 않음)
+
+			// 실패 시 joinForm.do로 msgType과 msg내용을 보내야함
+			// msgType: 실패메세지, msg: "모든 내용을 입력하세요"
+			// 포워딩 방식만 model 사용가능!! -> 여기는 redirect 방식 : model에 저장 X(model 사용 X)
+			// session 가능 but)session에 담기에는 적합한 데이터가 아님(너무 간단한거야)
+			// RedirectAttributes : pageContext에 저장됨(일회성 Flash 으로, 한페이지에서만, 잠깐 저장 가능)
+			// -> 리다이렉트 방식으로 이동할 때 보낼 데이터를 저장하는 객체
+			rttr.addFlashAttribute("msgType", "실패메세지");
+			rttr.addFlashAttribute("msg", "모든 내용을 입력하세요");
+
+			// 하나라도 누락되어 있기 때문에 회원가입을 할 수 없음 -> 회원가입폼으로 이동
+			return "redirect:/joinForm.do";
+
+		} else {
+			// 회원가입 시도 가능
+			m.setMemProfile("");
+
+			// 추가 : 비밀번호 암호화하기
+			String encdPw = pwEncoder.encode(m.getMemPw());
+			// System.out.println(encdPw);
+			m.setMemPw(encdPw);
+
+			int cnt = mapper.join(m);
+
+			// + 추가 : 권한 테이블에 회원의 권한 저장하기
+			// 회원가입할 때 입력한 정보는 다 m에 들어있음
+			List<Auth> list = m.getAuthList();
+			for (Auth auth : list) {
+				// list에서 하나씩 떼면 Auth형태로 담을 수 있음
+				if (auth.getAuth() != null) {
+					// null이 아닐때만 넣어줌 : 권한 값이 있을때만 권한테이블에 값 넣기
+					// -> 관리자만 체크하면 list 안에는 null / null / ADMIN 이렇게 들어감
+					Auth saveVO = new Auth();
+					// Auth vo : no(번호),memId,권한
+					// no -> 자동시퀀스 부여 , ID랑 권한 정보만 vo에 담아서 넘겨주면 됨
+					saveVO.setMemId(m.getMemId()); // 회원 아이디 넣기
+					saveVO.setAuth(auth.getAuth()); // 권한 넣기
+					// 권한 저장
+					mapper.authInsert(saveVO);
+
+				}
+			}
+
+			if (cnt == 1) {
+				System.out.println("회원가입 성공!");
+				rttr.addFlashAttribute("msgType", "성공메세지");
+				rttr.addFlashAttribute("msg", "회원가입에 성공했습니다.");
+
+				// + 추가 : 회원가입 성공 시 회원정보 + 권한정보까지 가져오기
+				// 회원가입 성공하면 id랑 일치하는 회원정보 전체 다 가져오기
+				Member mvo = mapper.getMember(m.getMemId());
+
+				// 회원가입 성공 시 로그인 처리까지
+				// 회원가입한 정보 세션에 저장
+				session.setAttribute("mvo", mvo);
+				return "redirect:/loginForm.do";
+
+			} else {
+				System.out.println("회원가입 실패");
+				rttr.addFlashAttribute("msgType", "실패메세지");
+				rttr.addFlashAttribute("msg", "회원가입에 실패했습니다.");
+				return "redirect:/joinForm.do";
+			}
+
+		}
+
+	}
+
+//	@RequestMapping("/logout.do")
+//	public String logout(HttpSession session) {
+//		session.invalidate();
+//		System.out.println("로그아웃 실행");
+//		return "redirect:/";
+//	}
+
+	@RequestMapping("/loginForm.do")
+	public String loginForm() {
+		// 로그인 페이지로 이동하는 기능
+		return "member/loginForm";
+	}
+
+	/*
+	 * @RequestMapping("/login.do") public String login(Member m, RedirectAttributes
+	 * rttr, HttpSession session) {
+	 * 
+	 * // 문제 // mapper에 login이라는 메서드 이름으로 로그인 기능 수행하기 // 단, 로그인 성공 시 index.jsp 이동 후
+	 * "로그인에 성공했습니다" 모달창 띄우기 // 로그인 실패 시 login.jsp 이동 후 "로그인에 실패했습니다" 모달창 띄우기
+	 * 
+	 * Member mvo = mapper.login(m); // 로그인 후 해당 회원의 정보를 모두 받아와야 하므로 Member 객체에 저장
+	 * 
+	 * if(mvo != null && pwEncoder.matches(m.getMemPw(), mvo.getMemPw())) { // mvo가
+	 * null이 아니고 and 비밀번호 일치여부가 true면 => 로그인 성공 // + 추가 : 비밀번호 일치여부 체크(내부적으로 알아서
+	 * 비교해게끔 만들어주기) // sql에서 쿼리문으로는 비교 불가능 (암호화 되어서 db에 들어가 있기 때문)
+	 * pwEncoder.matches(m.getMemPw(), mvo.getMemPw()); // 사용자가 입력한 비밀번호 :
+	 * m.getMemPw() == id기준으로 조회한 db에 저장되어있던 암호화된 비밀번호 : mvo.getMemPw() // 이걸 확인해주는
+	 * 함수 -> matches()
+	 * 
+	 * // 로그인 성공 System.out.println("로그인 성공!");
+	 * 
+	 * rttr.addFlashAttribute("msgType", "성공 메세지"); rttr.addFlashAttribute("msg",
+	 * "로그인에 성공했습니다!");
+	 * 
+	 * session.setAttribute("mvo", mvo); // session에 로그인 정보 저장 return "redirect:/";
+	 * 
+	 * }else { // mvo == null : 로그인 실패 System.out.println("로그인 실패...");
+	 * rttr.addFlashAttribute("msgType", "실패 메세지"); rttr.addFlashAttribute("msg",
+	 * "로그인에 실패했습니다."); return "redirect:loginForm.do"; } }
+	 */
+
+	@RequestMapping("/updateForm.do")
+	public String updateForm() {
+		return "member/updateForm";
+	}
+
+	@RequestMapping("/update.do")
+	public String update(Member m, RedirectAttributes rttr, HttpSession session) {
+		// System.out.println(member.toString());
+
+		// 문제
+		// mapper의 update 메서드를 통해 해당 회원의 정보 수정하기
+
+		// 조건 1. 하나라도 입력하지 않은 데이터가 있으면 updateForm.jsp로 다시 돌려보내면서 "모든 내용을 입력하세요"모달창 띄우기
+		if (m.getMemPw() == null || m.getMemPw().equals("") || m.getMemName() == null || m.getMemName().equals("")
+				|| m.getMemAge() == 0 || m.getMemEmail() == null || m.getMemEmail().equals("")
+				|| m.getAuthList().size() == 0) {
+
+			rttr.addFlashAttribute("msgType", "실패 메세지");
+			rttr.addFlashAttribute("msg", "모든 내용을 입력하세요.");
+			return "redirect:/updateForm.do";
+
+		} else {
+			// 유효성 검사 성공
+			// 원래 코드 : member.setMemProfile(""); -> profile값은 빈값 들어가게 해줌
+
+			// 회원정보 수정 시 프로필 값이 null이 되는 문제 해결하기 위한 코드
+			// Member mvo = (Member)session.getAttribute("mvo");
+			// member.setMemProfile(mvo.getMemProfile());
+
+			// + 추가 : 변경할 비밀번호 암호화
+			// 사용자가 입력한 값은 매개변수 Member m 에 담겨서 들어옴
+			String encyPw = pwEncoder.encode(m.getMemPw());
+			m.setMemPw(encyPw);
+
+			// 권한 삭제
+			mapper.authDelete(m.getMemId());
+			// 권한 입력
+			// + 추가 : 권한 테이블에 회원의 권한 저장하기
+			// 회원가입할 때 입력한 정보는 다 m에 들어있음
+			List<Auth> list = m.getAuthList();
+			for (Auth auth : list) {
+				// list에서 하나씩 떼면 Auth형태로 담을 수 있음
+				if (auth.getAuth() != null) {
+					// null이 아닐때만 넣어줌 : 권한 값이 있을때만 권한테이블에 값 넣기
+					// -> 관리자만 체크하면 list 안에는 null / null / ADMIN 이렇게 들어감
+					Auth saveVO = new Auth();
+					// Auth vo : no(번호),memId,권한
+					// no -> 자동시퀀스 부여 , ID랑 권한 정보만 vo에 담아서 넘겨주면 됨
+					saveVO.setMemId(m.getMemId()); // 회원 아이디 넣기
+					saveVO.setAuth(auth.getAuth()); // 권한 넣기
+					// 권한 저장
+					mapper.authInsert(saveVO);
+
+				}
+			}
+
+			int cnt = mapper.update(m);
+
+			if (cnt != 1) {
+				// 조건 2. 회원수정 실패 시 updateForm.jsp로 다시 돌려 보내면서 "회원 정보 수정이 실패했습니다" 모달창 띄우기
+				System.out.println("회원수정 실패");
+				rttr.addFlashAttribute("msgType", "실패 메세지");
+				rttr.addFlashAttribute("msg", "회원정보 수정에 실패했습니다.");
+				return "redirect:/updateForm.do";
+
+			} else {
+				// 조건 3. 회원수정 성공 시 index.jsp로 보내고 "회원정보 수정에 성공했습니다" 모달창 띄우기
+				System.out.println("회원수정 성공");
+				rttr.addFlashAttribute("msgType", "성공 메세지");
+				rttr.addFlashAttribute("msg", "회원정보 수정에 성공했습니다.");
+				Member mvo = mapper.getMember(m.getMemId());
+				
+				// + 추가
+				// 회원 정보 수정 성공 시 Spring Security Context에 회원정보 다시 넣기
+				
+				// Authentication를 먼저 불러와야 SecurityContextHolder에 접근할 수 있음
+				// Authentication가 auth로 MemberUserDetailsService 통해서 SecurityContextHolder한테 일 시켰거든
+				
+				// 실제 Spring Security 기능을 실행하는 Authentication 객체 가져오기
+				Authentication authentication =  SecurityContextHolder.getContext().getAuthentication();   
+				// SecurityContextHolder.getContext() -> Security Context
+				
+				// Authentication 객체는 내가 만든 MemberUserDetailsService를 통해
+				// DB 안에 값을 넣는 일도 하지만
+				// SecurityContextHolder 아래 SecurityContext 안에 있는 회원의 값을 가져올 수도 있음
+				
+				// 기존 Context 회원정보 가져오기 -> User(부모) 클래스로 반환 : MemberUser(자식) 형태로 들어가려면 다운캐스팅!
+				// why? : 로그인한 회원아이디를 가져오려고 -> 아이디 기준으로 회원정보수정해주려고
+				MemberUser userAccount = (MemberUser)authentication.getPrincipal();
+				
+				// 수정된 회원정보 가시 가져오기 : createNewAuthentication() 메서드 만들어서
+				// 기존에 있던 권한 정보 : authentication , memId(로그인한 사람 아이디)를 매개변수로 같이 보내서
+				// 수정된 정보를 가져와 Authentication 형태로 담아주겠다
+				Authentication newauthentication = 
+						createNewAuthentication(authentication, userAccount.getMember().getMemId());
+				
+				// Security Context 안에 새로운(다시 가져온 회원정보) 회원정보 넣기 -> Authentication 형태로 넣어줘야 함
+				SecurityContextHolder.getContext().setAuthentication(newauthentication);
+						
+						
+				// 로그인한 정보는 session에서 유지되고 있음 -> 회원정보 수정 시 session도 업데이트 해줘야함
+				//session.setAttribute("mvo", mvo);
+
+				return "redirect:/";
+
+			}
+		}
+	}
+
+	private Authentication createNewAuthentication(Authentication currentAuth, String username) {
+		// 여기에서 새롭게 DB의 회원정보를 가져올 거임(로그인하는 메서드 : loadByUserName 를 통해서)
+		// 가져왔던 기존 회원정보의 아이디를 기준으로 다시 로그인기능 수행
+		UserDetails newPrincipal =  MemberUserDetailsService.loadUserByUsername(username);
+		
+		// 비밀번호 관련 보안 작업을 해야함
+		UsernamePasswordAuthenticationToken newAuth = 
+				new UsernamePasswordAuthenticationToken(newPrincipal, 
+						currentAuth.getCredentials(), newPrincipal.getAuthorities());
+		
+		newAuth.setDetails(currentAuth.getDetails());
+		
+		return newAuth;
+	}
+
+	@RequestMapping("/imgForm.do")
+	public String imgForm() {
+		return "member/imgForm";
+	}
+
+	@RequestMapping("/imgUpdate.do")
+	public String imgUpdate(HttpServletRequest request, HttpSession session, RedirectAttributes rttr) {
+		// 이전에는 Request 객체를 따로 불러오지 않아도 내부적으로 스프링이 request.getParameter 해서 vo 묶어줬었음
+
+		// 파일 업로드를 할 수 있게 도와주는 객체 필요 : cos.jar
+		// (session, request 처럼 내장 객체 X -> 직접 만들어줘야 함)
+		MultipartRequest multi = null;
+		// MultiPartRequest 객체를 생성하기 위해서는 5개의 정보가 필요
+		// (1)요청 데이터 (2)저장경로 (3)최대크기 (4)인코딩 (5)파일명 중복제거
+
+		// 1. 요청 데이터 : request 객체 안에 다 담겨있음(요청에 대한 정보)
+		// 2. 저장경로
+		String savePt = request.getRealPath("resources/upload");
+		// System.out.println(savePt);
+
+		// 3. 이미지 최대크기
+		int fileMaxSize = 10 * 1024 * 1024 * 10;
+
+		// 유효성 검사
+		// 기존 해당 프로필 이미지 삭제
+		// -> 현재 로그인한 사람의 프로필 값을 가져와야 함
+		
+		
+		// ++ 세션에 정보가 없음 이제 -> 못가져와
+		// session.getAttribute("mvo") -> Member로 다운캐스팅 -> .getMemId() : mvo getter 사용
+		// String memId = ((Member) session.getAttribute("mvo")).getMemId();
+
+
+		// 4. 인코딩 : UTF-8
+		// 5. 파일명 중복제거 : 동일 파일명에 +1을 해줌 ( DefaultFileRenamePolicy() )
+		// ☆★예외사항 처리 : 파일 업로드에 대한 예외 처리는 IOException이 해줌!
+		try {
+			multi = new MultipartRequest(request, savePt, fileMaxSize, "UTF-8", new DefaultFileRenamePolicy());
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+		// ++ 추가
+		// multi 객체(request)를 통해서 회원아이디를 가져옴
+		String memId = multi.getParameter("memId");
+		
+		
+		// ++ 여기로 이동
+		// getMember 메서드는 memId와 일치하는 회원의 정보 (Member)를 가져옴
+		String oldImg = mapper.getMember(memId).getMemProfile();
+		System.out.println(oldImg);
+
+		// -> 기존 프로필 사진 삭제
+		// 해당 저장 경로 안에 이전의 사진 값을 삭제 하겠다
+		File oldfile = new File(savePt + "/" + oldImg);
+		if (oldfile.exists()) {
+			// 있을때만 삭제하겠다!
+			// 없을 때 삭제하면 500 에러남
+			oldfile.delete();
+		}
+		
+		// 업로드한 파일의 이름 가져오는 코드
+		File file = multi.getFile("memProfile");
+
+		if (file != null) {
+			System.out.println(file.getName());
+			String ext = file.getName().substring(file.getName().lastIndexOf(".") + 1);
+			System.out.println(ext);
+			// file.getName().substring("." + 1) 이렇게만 해도 되지만
+			// . 이 여러개 있는 경우
+			// 마지막 . 뒤에 있는 확장자명만 가져오기 위해
+
+			// 확장자가 소문자 , 대문자 인 경우 통일시켜주기 위해
+			ext = ext.toUpperCase();
+
+			if (!(ext.equals("PNG") || ext.equals("GIF") || ext.equals("JPG"))) {
+				// 위 확장자명이 아니면 삭제해라
+				if (file.exists()) {
+					file.delete();
+					rttr.addFlashAttribute("msgType", "실패 메세지");
+					rttr.addFlashAttribute("msg", "이미지 파일만 가능합니다.(PNG, JPG, GIF)");
+					return "redirect:/imgForm.do";
+				}
+			}
+		}
+
+		// 업로드한 파일의 이름을 가져오는 코드 : (key값) -> key값의 이름을 가져올 수 있음
+		String newProfile = multi.getFilesystemName("memProfile");
+		// System.out.println(memId + "/" + newProfile);
+
+		Member mvo = new Member();
+		mvo.setMemId(memId);
+		mvo.setMemProfile(newProfile);
+
+		// 해당되는 아이디의 프로필 값을 바꿔줌
+		mapper.profileUpdate(mvo);
+
+		// 사진 업데이트 후 수정된 회원정보를 다시 가져와서 세션에 담기
+		// 아이디랑 일치하는 회원정보 가져오는 getMember 메서드 이용하기!
+		Member m = mapper.getMember(memId);
+		
+		// ++ 세션 사용 X
+		// session.setAttribute("mvo", m);
+		
+		Authentication authentication =  SecurityContextHolder.getContext().getAuthentication();   
+		MemberUser userAccount = (MemberUser)authentication.getPrincipal();
+
+		Authentication newauthentication = 
+				createNewAuthentication(authentication, userAccount.getMember().getMemId());
+		
+		SecurityContextHolder.getContext().setAuthentication(newauthentication);
+
+		rttr.addFlashAttribute("msgType", "성공 메세지");
+		rttr.addFlashAttribute("msg", "프로필 사진 변경 완료!");
+		return "redirect:/";
+	}
+
+}

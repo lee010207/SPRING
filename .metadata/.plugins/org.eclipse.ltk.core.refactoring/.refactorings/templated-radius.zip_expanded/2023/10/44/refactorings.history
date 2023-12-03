@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Copy element &apos;radius&apos; to &apos;WEB-INF&apos;&#x0D;&#x0A;- Original project: &apos;templated-radius.zip_expanded&apos;&#x0D;&#x0A;- Destination element: &apos;WEB-INF&apos;&#x0D;&#x0A;- Original element: &apos;radius&apos;" description="Copy folder" element1="radius" files="0" flags="589830" folders="1" id="org.eclipse.jdt.ui.copy" policy="org.eclipse.jdt.ui.copyResources" stamp="1698737373391" target="/test/src/main/webapp/WEB-INF" units="0" version="1.0"/>
+</session>

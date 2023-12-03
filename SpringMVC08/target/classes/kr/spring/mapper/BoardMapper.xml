@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="kr.spring.mapper.BoardMapper">
+
+	<select id="getList" parameterType="kr.spring.entity.Criteria" resultType="kr.spring.entity.Board">
+		SELECT * FROM TBLBOARD 
+		ORDER BY BOARDGROUP DESC, BOARDSEQUENCE ASC
+		LIMIT #{pageStart}, #{perPageNum}
+	</select>
+	
+	<insert id="insert" parameterType="kr.spring.entity.Board">
+	      INSERT INTO TBLBOARD(IDX, MEMID, TITLE, CONTENT, WRITER,
+	      BOARDGROUP, BOARDSEQUENCE, BOARDLEVEL, BOARDAVAILABLE)
+	      SELECT IFNULL(MAX(IDX) + 1, 1), #{memId}, #{title}, #{content},#{writer},
+	      IFNULL(MAX(BOARDGROUP) + 1, 1), 0, 0, 1
+	      FROM TBLBOARD
+	</insert>
+	
+	<insert id="insertSelectKey" parameterType="kr.spring.entity.Board">
+		<selectKey keyProperty="idx,boardGroup" resultType="kr.spring.entity.Board" order="BEFORE">
+			SELECT IFNULL(MAX(IDX) + 1, 1) AS idx, 
+				   IFNULL(MAX(BOARDGROUP) + 1, 1) AS boardGroup 
+		    FROM TBLBOARD
+		</selectKey>
+		INSERT INTO TBLBOARD(IDX, MEMID, TITLE, CONTENT, WRITER,
+	      					BOARDGROUP, BOARDSEQUENCE, BOARDLEVEL, BOARDAVAILABLE)
+	    VALUES(#{idx},#{memId},#{title},#{content},#{writer},#{boardGroup},0,0,1)
+	</insert>
+	
+	<select id="login" parameterType="kr.spring.entity.Member" resultType="kr.spring.entity.Member">
+		SELECT * FROM TBLMEM WHERE MEMID=#{memId} AND MEMPW=#{memPw}
+	</select>
+	
+	<select id="read" parameterType="int" resultType="kr.spring.entity.Board">
+		SELECT * FROM TBLBOARD WHERE IDX = #{idx}
+	</select>
+
+	<update id="update" parameterType="kr.spring.entity.Board">
+		UPDATE TBLBOARD
+		SET
+		TITLE=#{title}, CONTENT=#{content}
+		WHERE IDX = #{idx}
+	</update>
+	
+	<delete id="delete" parameterType="kr.spring.entity.Board">
+		<!-- 삭제 시 boardavailable 값 0으로 바꿔주기 -->
+		UPDATE TBLBOARD
+		SET BOARDAVAILABLE = 0
+		WHERE IDX=#{idx}
+	</delete>
+	
+	<update id="replySeqUpdate" parameterType="kr.spring.entity.Board">
+		UPDATE TBLBOARD
+		SET BOARDSEQUENCE = BOARDSEQUENCE + 1
+		WHERE BOARDGROUP = #{boardGroup}
+		AND BOARDSEQUENCE > #{boardSequence}
+	</update>
+	
+	<insert id="replyInsert" parameterType="kr.spring.entity.Board">
+		<selectKey keyProperty="idx" resultType="kr.spring.entity.Board" order="BEFORE">
+			SELECT IFNULL(MAX(IDX) + 1, 1) AS idx
+		    FROM TBLBOARD
+		</selectKey>
+		INSERT INTO TBLBOARD(IDX, MEMID, TITLE, CONTENT, WRITER,
+	      					BOARDGROUP, BOARDSEQUENCE, BOARDLEVEL, BOARDAVAILABLE)
+	    VALUES(#{idx},#{memId},#{title},#{content},#{writer},
+	    #{boardGroup},#{boardSequence},#{boardLevel},1)
+	</insert>
+		
+	<select id="totalCount" resultType="int">
+		SELECT COUNT(*) FROM TBLBOARD
+	</select>	
+	
+</mapper>

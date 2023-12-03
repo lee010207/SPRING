@@ -1,0 +1,11 @@
+
+9월 14, 2023 09:08:14.86 NEW SESSION
+9월 14, 2023 09:08:14.86 INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+9월 14, 2023 09:15:01.363 [17080:17072:0914/091501.362:ERROR:device_event_log_impl.cc(222)] [09:15:01.362] USB: usb_service_win.cc:104 SetupDiGetDeviceProperty({{A45C254E-DF1C-4EFD-8020-67D146A850E0}, 6}) failed: ��Ұ� �����ϴ�. (0x490)
+9월 14, 2023 09:20:35.477 [17080:6604:0914/092035.476:ERROR:connection_factory_impl.cc(471)] ConnectionHandler failed with net error: -2
+9월 14, 2023 09:50:02.582 [17080:6604:0914/095002.581:ERROR:connection_factory_impl.cc(428)] Failed to connect to MCS endpoint with error -7
+9월 14, 2023 10:06:17.269 [17080:17072:0914/100617.268:ERROR:interface_endpoint_client.cc(702)] Message 1 rejected by interface blink.mojom.WidgetHost
+9월 14, 2023 11:24:09.561 [17080:17072:0914/112409.560:ERROR:interface_endpoint_client.cc(702)] Message 1 rejected by interface blink.mojom.WidgetHost
+9월 14, 2023 11:31:54.820 [17080:17072:0914/113154.819:ERROR:interface_endpoint_client.cc(702)] Message 1 rejected by interface blink.mojom.WidgetHost
+9월 14, 2023 12:54:38.209 [17080:17072:0914/125438.207:ERROR:device_event_log_impl.cc(222)] [12:54:38.207] USB: usb_service_win.cc:104 SetupDiGetDeviceProperty({{A45C254E-DF1C-4EFD-8020-67D146A850E0}, 6}) failed: ��Ұ� �����ϴ�. (0x490)
+9월 14, 2023 13:59:46.260 [17080:6604:0914/135946.259:ERROR:connection_factory_impl.cc(471)] ConnectionHandler failed with net error: -2
